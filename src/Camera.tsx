@@ -7,11 +7,13 @@ export default function SelfieCamera() {
   const openCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" }, // фронталка
+        video: { facingMode: "user" },
+        audio: false,
       });
 
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        videoRef.current.srcObject = stream as MediaStream;
+        await videoRef.current.play();
         setIsOpen(true);
       }
     } catch (err) {
@@ -26,6 +28,7 @@ export default function SelfieCamera() {
         <video
           ref={videoRef}
           autoPlay
+          muted
           playsInline
           style={{ width: "300px", border: "1px solid black" }}
         />
