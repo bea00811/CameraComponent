@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import './CameraApp.css';
+import './Camera.css';
 
 const CameraApp: React.FC = () => {
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
