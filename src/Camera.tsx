@@ -1,250 +1,189 @@
 import React, { useState, useRef, useEffect } from 'react';
+import './CameraApp.css';
 
-interface CameraComponentProps {
-  onPhotoTaken?: (photoData: string) => void;
-  className?: string;
-}
-
-const CameraComponent: React.FC<CameraComponentProps> = ({ 
-  onPhotoTaken, 
-  className 
-}) => {
+const CameraApp: React.FC = () => {
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
-  const [error, setError] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  // Устанавливаем stream в video когда оба доступны
-  useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-    }
-  }, [stream, isCameraOpen]);
-
-  const openCamera = async (): Promise<void> => {
+  // Функция мгновенного открытия селфи-камеры
+  const openSelfieCamera = async (): Promise<void> => {
     try {
-      setError('');
-      setIsLoading(true);
-      
-      const newStream = await navigator.mediaDevices.getUserMedia({ 
+      // Сразу открываем камеру без дополнительных кнопок
+      const constraints: MediaStreamConstraints = {
         video: { 
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          facingMode: 'user', // Фронтальная камера
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
         } as MediaTrackConstraints
-      });
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
-      setStream(newStream);
+      streamRef.current = stream;
       setIsCameraOpen(true);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      // Автоматически переходим в полноэкранный режим на мобильных
+      if (/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        try {
+          if (document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen();
+          }
+        } catch (fullscreenError) {
+          console.log('Fullscreen not supported');
+        }
+      }
+
     } catch (error) {
-      console.error('Ошибка открытия камеры:', error);
-      setError('Не удалось открыть камеру. Проверьте разрешения.');
-    } finally {
-      setIsLoading(false);
+      console.error('Error opening camera:', error);
+      alert('Не удалось открыть камеру. Разрешите доступ к камере в настройках браузера.');
     }
   };
 
-  const closeCamera = (): void => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-    setIsCameraOpen(false);
-    setCapturedPhoto(null);
-  };
-
+  // Функция создания фото
   const takePhoto = (): void => {
-    if (!videoRef.current || !stream || !videoRef.current.videoWidth) {
-      setError('Камера не готова');
-      return;
-    }
+    if (!videoRef.current || !streamRef.current) return;
 
-    try {
-      const video = videoRef.current;
-      
-      // Создаем canvas для фото
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      
-      if (!context) {
-        throw new Error('Не удалось получить контекст canvas');
-      }
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    if (!context) return;
 
-      // Устанавливаем размеры canvas
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      // Зеркальное отображение для селфи
-      context.translate(canvas.width, 0);
-      context.scale(-1, 1);
-      
-      // Рисуем кадр видео на canvas
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      // Получаем фото в формате Data URL
-      const photoDataUrl = canvas.toDataURL('image/png');
-      setCapturedPhoto(photoDataUrl);
-      
-      // Вызываем колбэк если передан
-      if (onPhotoTaken) {
-        onPhotoTaken(photoDataUrl);
-      }
-      
-    } catch (error) {
-      console.error('Ошибка при создании фото:', error);
-      setError('Ошибка при создании фото');
-    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Зеркальное отображение для селфи
+    context.translate(canvas.width, 0);
+    context.scale(-1, 1);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const photoDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    setCapturedPhoto(photoDataUrl);
   };
 
-  const downloadPhoto = (): void => {
+  // Функция сохранения фото
+  const savePhoto = (): void => {
     if (!capturedPhoto) return;
     
     const link = document.createElement('a');
     link.href = capturedPhoto;
-    link.download = `selfie-${new Date().getTime()}.png`;
+    link.download = `selfie-${new Date().getTime()}.jpg`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    
+    // После сохранения закрываем камеру
+    closeCamera();
   };
 
+  // Функция переснять фото
   const retakePhoto = (): void => {
     setCapturedPhoto(null);
   };
 
-  // Проверка поддержки камеры
-  const isCameraSupported = (): boolean => {
-    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  // Функция закрытия камеры
+  const closeCamera = (): void => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    // Выходим из полноэкранного режима
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+    
+    setIsCameraOpen(false);
+    setCapturedPhoto(null);
   };
 
-  // Очистка при размонтировании компонента
+  // Автоматически открываем камеру при монтировании компонента
   useEffect(() => {
+    // Можно раскомментировать для автоматического открытия:
+    // openSelfieCamera();
+    
+    // Очистка при размонтировании
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
-  }, [stream]);
-
-  if (!isCameraSupported()) {
-    return (
-      <div className={className} style={{ padding: '20px', textAlign: 'center' }}>
-        <p style={{ color: 'red' }}>Ваш браузер не поддерживает доступ к камере</p>
-      </div>
-    );
-  }
+  }, []);
 
   return (
-    <div className={className} style={{ padding: '20px', textAlign: 'center' }}>
-      {/* Видео с камеры */}
-      {isCameraOpen && (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          style={{
-            width: '100%',
-            maxWidth: '400px',
-            border: '2px solid #007bff',
-            borderRadius: '8px',
-            display: capturedPhoto ? 'none' : 'block',
-            transform: 'scaleX(-1)' // Видимое зеркальное отображение
-          }}
-        />
-      )}
-      
-      {/* Предпросмотр сделанного фото */}
-      {capturedPhoto && (
-        <div>
-          <img
-            src={capturedPhoto}
-            alt="Селфи"
-            style={{
-              width: '100%',
-              maxWidth: '400px',
-              border: '2px solid #28a745',
-              borderRadius: '8px'
-            }}
-          />
-          <div style={{ marginTop: '10px' }}>
-            <button
-              onClick={downloadPhoto}
-              style={buttonStyle('#28a745')}
-            >
-              💾 Сохранить
-            </button>
-            <button
-              onClick={retakePhoto}
-              style={buttonStyle('#ffc107')}
-            >
-              🔄 Переснять
-            </button>
-            <button
-              onClick={closeCamera}
-              style={buttonStyle('#dc3545')}
-            >
-              ❌ Закрыть
-            </button>
-          </div>
+    <div className="camera-app">
+      {/* Если камера не открыта - показываем кнопку */}
+      {!isCameraOpen && (
+        <div className="camera-launch-screen">
+          <button 
+            className="open-selfie-btn"
+            onClick={openSelfieCamera}
+          >
+            📸 Сделать селфи
+          </button>
         </div>
       )}
-      
-      {/* Кнопки управления */}
-      {!isCameraOpen ? (
-        <button
-          onClick={openCamera}
-          disabled={isLoading}
-          style={{
-            ...buttonStyle(isLoading ? '#ccc' : '#007bff'),
-            opacity: isLoading ? 0.7 : 1
-          }}
-        >
-          {isLoading ? 'Загрузка...' : '📷 Открыть камеру'}
-        </button>
-      ) : (
-        !capturedPhoto && (
-          <div style={{ marginTop: '10px' }}>
-            <button
-              onClick={takePhoto}
-              style={buttonStyle('#28a745')}
-            >
-              📸 Сделать фото
-            </button>
-            <button
-              onClick={closeCamera}
-              style={buttonStyle('#dc3545')}
-            >
-              ❌ Закрыть камеру
-            </button>
-          </div>
-        )
+
+      {/* Интерфейс камеры */}
+      {isCameraOpen && (
+        <div className="camera-interface">
+          {/* Видео с камеры */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="camera-video"
+          />
+          
+          {/* Кнопка съемки (только если фото еще не сделано) */}
+          {!capturedPhoto && (
+            <div className="camera-controls">
+              <button 
+                className="capture-btn"
+                onClick={takePhoto}
+              >
+                <div className="capture-circle"></div>
+              </button>
+              
+              <button 
+                className="close-camera-btn"
+                onClick={closeCamera}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Предпросмотр и кнопки после съемки */}
+          {capturedPhoto && (
+            <div className="photo-preview-overlay">
+              <img 
+                src={capturedPhoto} 
+                alt="Ваше селфи" 
+                className="preview-image"
+              />
+              
+              <div className="photo-actions">
+                <button className="save-btn" onClick={savePhoto}>
+                  ✅ Сохранить
+                </button>
+                <button className="retake-btn" onClick={retakePhoto}>
+                  🔄 Переснять
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
-      
-      {error && (
-        <p style={{ color: 'red', marginTop: '10px' }}>{error}</p>
-      )}
-      
-      {/* Скрытый canvas для ссылок */}
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   );
 };
 
-// Вспомогательная функция для стилей кнопок
-const buttonStyle = (backgroundColor: string): React.CSSProperties => ({
-  padding: '10px 20px',
-  margin: '5px',
-  backgroundColor,
-  color: backgroundColor === '#ffc107' ? 'black' : 'white',
-  border: 'none',
-  borderRadius: '5px',
-  cursor: 'pointer',
-  fontSize: '14px',
-  fontWeight: '500'
-});
-
-export default CameraComponent;
+export default CameraApp;
